@@ -1,0 +1,31 @@
+{
+  "name": "hireloop-server",
+  "version": "1.0.0",
+  "description": "HireLoop Backend Server",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "debug": "nodemon --inspect src/app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@stripe/stripe-js": "^9.12.1",
+    "axios": "^1.19.0",
+    "better-auth": "^1.6.25",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mongodb": "^7.5.0",
+    "mongoose": "^9.8.1",
+    "next": "^16.2.12",
+    "nodemailer": "^9.0.3",
+    "resend": "^6.18.1",
+    "stripe": "^22.3.2"
+  }
+}
