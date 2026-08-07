@@ -168,15 +168,30 @@ exports.deleteJob = async (req, res) => {
 
 exports.getMyJobs = async (req, res) => {
     try {
-        const { jobsCollection } = getCollections();
+        const { jobsCollection, companiesCollection } = getCollections();
 
         if (!req.user || (req.user.role !== 'recruiter' && req.user.role !== 'admin')) {
             return res.status(403).json({ error: 'Access denied' });
         }
 
-        const query = req.user.role === 'recruiter' ? { recruiterId: req.user.id } : {};
+        // ✅ Step 1: Find the recruiter's company
+        const company = await companiesCollection.findOne({ recruiterId: req.user.id });
+        
+        if (!company) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'No company found for this recruiter' 
+            });
+        }
+
+        // ✅ Step 2: Get jobs for that company
+        const query = { companyId: company._id.toString() };
         const jobs = await jobsCollection.find(query).toArray();
-        res.json(jobs);
+        
+        res.json({
+            success: true,
+            data: jobs
+        });
     } catch (error) {
         console.error('Error fetching my jobs:', error);
         res.status(500).json({ error: 'Failed to fetch jobs' });

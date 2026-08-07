@@ -24,6 +24,7 @@ exports.getPublicUsers = async (req, res) => {
     }
 };
 
+// ✅ Get all users (Admin only)
 exports.getAllUsers = async (req, res) => {
     try {
         console.log('🔐🔐🔐 ADMIN getAllUsers called!');
@@ -101,9 +102,10 @@ exports.getAllUsers = async (req, res) => {
     }
 };
 
-// ✅ Get single user by ID
+// ✅ Get single user by ID (Admin only)
 exports.getUserById = async (req, res) => {
     try {
+        console.log('👤 Get user by ID called!');
         const { usersCollection } = getCollections();
         const { id } = req.params;
 
@@ -141,7 +143,13 @@ exports.getUserById = async (req, res) => {
 // ✅ Update user (Admin only)
 exports.updateUser = async (req, res) => {
     try {
-        const { usersCollection, sessionCollection, adminLogsCollection } = getCollections();
+        console.log('📝 UPDATE USER called!');
+        console.log('📝 User ID:', req.params.id);
+        console.log('📝 Action:', req.body.action);
+        console.log('👤 Admin:', req.user?.email);
+        
+        const collections = getCollections();
+        const { usersCollection, sessionCollection, adminLogsCollection } = collections;
         const { id } = req.params;
         const { action } = req.body;
 
@@ -158,6 +166,31 @@ exports.updateUser = async (req, res) => {
                 success: false,
                 error: 'User not found'
             });
+        }
+
+        console.log('👤 User found:', user.email, 'Role:', user.role);
+
+        // ✅ CRITICAL: Prevent admin from changing another admin's role
+        const adminEmail = req.user?.email;
+        if (user.role === 'admin') {
+            const currentAdmin = await usersCollection.findOne({ email: adminEmail });
+            const isSelf = currentAdmin && currentAdmin._id.toString() === id;
+            
+            if (!isSelf && (action === 'make_seeker' || action === 'make_recruiter' || action === 'make_admin')) {
+                console.error('❌ Admin cannot change another admin\'s role:', adminEmail, '->', user.email);
+                return res.status(403).json({
+                    success: false,
+                    error: 'Cannot change another admin\'s role. Only the admin can change their own role.'
+                });
+            }
+            
+            if (!isSelf && (action === 'suspend' || action === 'activate')) {
+                console.error('❌ Admin cannot suspend/activate another admin:', adminEmail, '->', user.email);
+                return res.status(403).json({
+                    success: false,
+                    error: 'Cannot suspend or activate another admin. Only the admin can manage their own status.'
+                });
+            }
         }
 
         let updateData = {};
@@ -228,7 +261,6 @@ exports.updateUser = async (req, res) => {
             });
         }
 
-        // ✅ IMMEDIATE SESSION KILL FIX
         if (action === 'suspend') {
             await sessionCollection.deleteMany({ userId: id });
         }
@@ -236,14 +268,18 @@ exports.updateUser = async (req, res) => {
         const updatedUser = await usersCollection.findOne({ _id: new ObjectId(id) });
         const { password, password_hash, ...safeUser } = updatedUser;
 
-        // ✅ Log the Action
-        const adminEmail = req.user?.email || 'Unknown Admin';
-        await adminLogsCollection.insertOne({
-            action: `Admin updated user: ${safeUser.email} -> ${message}`,
-            adminEmail: adminEmail,
-            targetUserId: id,
-            createdAt: new Date()
-        });
+        try {
+            await adminLogsCollection.insertOne({
+                action: `Admin updated user: ${safeUser.email} -> ${message}`,
+                adminEmail: adminEmail || 'Unknown Admin',
+                targetUserId: id,
+                createdAt: new Date(),
+                type: 'update'
+            });
+            console.log('✅ Admin log inserted successfully');
+        } catch (logError) {
+            console.error('❌ Failed to insert admin log:', logError);
+        }
 
         res.json({
             success: true,
@@ -252,10 +288,12 @@ exports.updateUser = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error updating user:', error);
+        console.error('❌ Error updating user:', error);
+        console.error('❌ Error stack:', error.stack);
         res.status(500).json({
             success: false,
-            error: 'Failed to update user'
+            error: 'Failed to update user',
+            details: error.message
         });
     }
 };
@@ -263,6 +301,11 @@ exports.updateUser = async (req, res) => {
 // ✅ Delete user (Admin only)
 exports.deleteUser = async (req, res) => {
     try {
+        console.log('🗑️ DELETE USER called!');
+        console.log('📝 User ID:', req.params.id);
+        console.log('👤 Admin:', req.user?.email);
+        
+        const collections = getCollections();
         const { 
             usersCollection, 
             sessionCollection, 
@@ -271,24 +314,45 @@ exports.deleteUser = async (req, res) => {
             savedJobsCollection,
             billingHistoryCollection,
             adminLogsCollection
-        } = getCollections();
+        } = collections;
+
         const { id } = req.params;
 
         if (!ObjectId.isValid(id)) {
+            console.error('❌ Invalid user ID format:', id);
             return res.status(400).json({
                 success: false,
-                error: 'Invalid user ID'
+                error: 'Invalid user ID format'
             });
         }
 
         const user = await usersCollection.findOne({ _id: new ObjectId(id) });
         if (!user) {
+            console.error('❌ User not found:', id);
             return res.status(404).json({
                 success: false,
                 error: 'User not found'
             });
         }
 
+        console.log('👤 User found:', user.email, 'Role:', user.role);
+
+        const adminEmail = req.user?.email;
+        if (user.role === 'admin') {
+            const currentAdmin = await usersCollection.findOne({ email: adminEmail });
+            const isSelf = currentAdmin && currentAdmin._id.toString() === id;
+            
+            if (!isSelf) {
+                console.error('❌ Admin cannot delete another admin:', adminEmail, '->', user.email);
+                return res.status(403).json({
+                    success: false,
+                    error: 'Cannot delete another admin. Only the admin can delete their own account.'
+                });
+            }
+        }
+
+        console.log('📝 Deleting related data for user:', user.email);
+        
         await Promise.all([
             usersCollection.deleteOne({ _id: new ObjectId(id) }),
             sessionCollection.deleteMany({ userId: id }),
@@ -298,14 +362,20 @@ exports.deleteUser = async (req, res) => {
             billingHistoryCollection.deleteMany({ userId: id })
         ]);
 
-        // ✅ Log the Action
-        const adminEmail = req.user?.email || 'Unknown Admin';
-        await adminLogsCollection.insertOne({
-            action: `Admin permanently deleted user: ${user.email} (${user.name || 'Unknown'})`,
-            adminEmail: adminEmail,
-            targetUserId: id,
-            createdAt: new Date()
-        });
+        try {
+            await adminLogsCollection.insertOne({
+                action: `Admin permanently deleted user: ${user.email} (${user.name || 'Unknown'})`,
+                adminEmail: adminEmail || 'Unknown Admin',
+                targetUserId: id,
+                createdAt: new Date(),
+                type: 'delete'
+            });
+            console.log('✅ Admin log inserted successfully');
+        } catch (logError) {
+            console.error('❌ Failed to insert admin log:', logError);
+        }
+
+        console.log('✅ User deleted successfully:', user.email);
 
         res.json({
             success: true,
@@ -318,10 +388,12 @@ exports.deleteUser = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error deleting user:', error);
+        console.error('❌ Error deleting user:', error);
+        console.error('❌ Error stack:', error.stack);
         res.status(500).json({
             success: false,
-            error: 'Failed to delete user'
+            error: 'Failed to delete user',
+            details: error.message
         });
     }
 };
@@ -329,6 +401,7 @@ exports.deleteUser = async (req, res) => {
 // ✅ Get user stats (Admin only)
 exports.getUserStats = async (req, res) => {
     try {
+        console.log('📊 GET USER STATS called!');
         const { usersCollection } = getCollections();
 
         const now = new Date();
@@ -364,6 +437,16 @@ exports.getUserStats = async (req, res) => {
             })
         ]);
 
+        console.log('📊 Stats:', {
+            totalUsers,
+            activeUsers,
+            recruiterCount,
+            seekerCount,
+            adminCount,
+            suspendedCount,
+            newSignups
+        });
+
         res.json({
             success: true,
             data: {
@@ -378,7 +461,7 @@ exports.getUserStats = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error getting user stats:', error);
+        console.error('❌ Error getting user stats:', error);
         res.status(500).json({
             success: false,
             error: 'Failed to get user stats'
@@ -389,6 +472,7 @@ exports.getUserStats = async (req, res) => {
 // ✅ Get profile (Current user)
 exports.getProfile = async (req, res) => {
     try {
+        console.log('👤 GET PROFILE called!');
         const { usersCollection } = getCollections();
         
         if (!req.user) {
@@ -425,7 +509,7 @@ exports.getProfile = async (req, res) => {
             data: safeUser
         });
     } catch (error) {
-        console.error('Error fetching profile:', error);
+        console.error('❌ Error fetching profile:', error);
         res.status(500).json({ 
             success: false,
             error: 'Failed to fetch profile' 
@@ -433,23 +517,15 @@ exports.getProfile = async (req, res) => {
     }
 };
 
-// backend/src/controllers/userController.js
-
 // ✅ Log user signup (called from frontend after successful signup)
 exports.logUserSignup = async (req, res) => {
     try {
         console.log('🔍🔍🔍 logUserSignup called!');
         console.log('📝 Request body:', req.body);
-        console.log('📝 Headers:', req.headers);
         
-        const { adminLogsCollection } = getCollections();
-        const { email, name, role, userId } = req.body;
+        const collections = getCollections();
+        const { adminLogsCollection } = collections;
 
-        console.log(`📝 Logging signup for: ${email}`);
-        console.log(`📝 Name: ${name}, Role: ${role}, UserId: ${userId}`);
-
-        // Check if adminLogsCollection exists
-        console.log('📝 Checking adminLogsCollection...');
         if (!adminLogsCollection) {
             console.error('❌ adminLogsCollection is null or undefined!');
             return res.status(500).json({ 
@@ -457,6 +533,11 @@ exports.logUserSignup = async (req, res) => {
                 error: 'Database collection not available' 
             });
         }
+
+        const { email, name, role, userId } = req.body;
+
+        console.log(`📝 Logging signup for: ${email}`);
+        console.log(`📝 Name: ${name}, Role: ${role}, UserId: ${userId}`);
 
         const result = await adminLogsCollection.insertOne({
             action: `New User Registered: ${name || 'Unknown'} (${email}) - Role: ${role || 'seeker'}`,
@@ -478,3 +559,6 @@ exports.logUserSignup = async (req, res) => {
         });
     }
 };
+
+console.log('✅ userController loaded successfully');
+console.log('📤 Exported functions:', Object.keys(exports));
