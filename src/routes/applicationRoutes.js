@@ -54,6 +54,50 @@ router.get(
 );
 
 // ✅ =============================================
+// ✅ SEEKER ROUTES - Get my applications
+// ✅ =============================================
+
+// Get my applications (Seeker)
+router.get(
+    '/my',
+    requireAuth,
+    requireActive,
+    applicationController.getMyApplications
+);
+
+// ✅ =============================================
+// ✅ RECRUITER ROUTES
+// ✅ =============================================
+
+// Get all applications for recruiter's company
+router.get(
+    '/recruiter',
+    requireAuth,
+    requireActive,
+    applicationController.getRecruiterApplications
+);
+
+// Get application stats for recruiter
+router.get(
+    '/recruiter/stats',
+    requireAuth,
+    requireActive,
+    applicationController.getRecruiterStats
+);
+
+// ✅ =============================================
+// ✅ UPDATE APPLICATION STATUS (Recruiter)
+// ✅ =============================================
+
+// Update application status (Recruiter) - Checks COMPANY ownership
+router.patch(
+    '/:id/status',
+    requireAuth,
+    requireActive,
+    applicationController.updateApplicationStatusRecruiter
+);
+
+// ✅ =============================================
 // ✅ PROTECTED ROUTES (require active user)
 // ✅ =============================================
 

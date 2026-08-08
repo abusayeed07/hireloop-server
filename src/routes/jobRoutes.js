@@ -2,26 +2,37 @@
 const express = require('express');
 const router = express.Router();
 const jobController = require('../controllers/jobController');
-const { requireAuth } = require('../middleware/authMiddleware');
+const { requireAuth, requireRole } = require('../middleware/authMiddleware');
 
-// ✅ Public routes (No authentication required)
+// ==========================================
+// PUBLIC ROUTES (No authentication required)
+// ==========================================
 router.get('/', jobController.getJobs);
+
+// ==========================================
+// ✅ IMPORTANT: Specific routes MUST come before parameterized routes
+// ==========================================
+
+// ✅ Specific route: /my-jobs MUST come before /:id
 router.get('/my-jobs', requireAuth, jobController.getMyJobs);
+
+// ✅ Parameterized route: /:id comes AFTER specific routes
 router.get('/:id', jobController.getJobById);
 
-// ✅ Protected routes
+// ==========================================
+// PROTECTED ROUTES (Authentication required)
+// ==========================================
 router.post('/', requireAuth, jobController.createJob);
 router.put('/:id', requireAuth, jobController.updateJob);
 router.delete('/:id', requireAuth, jobController.deleteJob);
-// Add this route
 router.put('/:id/status', requireAuth, jobController.toggleJobStatus);
 
+// ✅ Recruiter requests re-review
+router.post('/:id/re-review', requireAuth, jobController.requestReReview);
 
 // ==========================================
-// ✅ ADMIN ROUTES (Appended below existing routes)
+// ADMIN ROUTES (Authentication + Admin role required)
 // ==========================================
-// Note: requireRole must be imported at the top of this file
-const { requireRole } = require('../middleware/authMiddleware');
 
 // Get ALL jobs for Admin dashboard (with optional filters)
 router.get('/admin/jobs', requireAuth, requireRole(['admin']), jobController.getAdminJobs);
@@ -31,5 +42,9 @@ router.get('/admin/stats', requireAuth, requireRole(['admin']), jobController.ge
 
 // Delete any job (Admin only)
 router.delete('/admin/jobs/:id', requireAuth, requireRole(['admin']), jobController.adminDeleteJob);
+
+// Admin approve/reject job routes
+router.patch('/admin/jobs/:id/approve', requireAuth, requireRole(['admin']), jobController.adminApproveJob);
+router.patch('/admin/jobs/:id/reject', requireAuth, requireRole(['admin']), jobController.adminRejectJob);
 
 module.exports = router;

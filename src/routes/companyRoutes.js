@@ -15,12 +15,23 @@ router.use((req, res, next) => {
 // ✅ =============================================
 router.get('/my', requireAuth, requireActive, companyController.getMyCompany);
 
+// =============================================
+// ✅ CREATE COMPANY (Protected - Recruiter only)
+// =============================================
+router.post('/', requireAuth, requireActive, companyController.createCompany);
+
+// =============================================
+// ✅ UPDATE COMPANY (Protected - Recruiter only)
+// =============================================
+router.put('/:id', requireAuth, requireActive, companyController.updateCompany);
+
 // ✅ =============================================
 // ✅ ADMIN ROUTES
 // ✅ =============================================
 const adminMiddleware = [requireAuth, requireActive, requireRole(['admin'])];
 
 router.get('/admin/companies', adminMiddleware, companyController.getAllCompanies);
+router.get('/admin/stats', adminMiddleware, companyController.getCompanyStats);
 router.patch('/admin/companies/:id', adminMiddleware, companyController.updateCompanyStatus);
 router.delete('/admin/companies/:id', adminMiddleware, companyController.deleteCompany);
 
@@ -28,6 +39,8 @@ router.delete('/admin/companies/:id', adminMiddleware, companyController.deleteC
 // ✅ PUBLIC ROUTES - Show ALL companies (no filter)
 // ✅ =============================================
 router.get('/', companyController.getPublicCompanies);
+
+// ⚠️ CRITICAL: The /:id route MUST come AFTER all specific routes
 router.get('/:id', companyController.getCompanyById);
 
 module.exports = router;

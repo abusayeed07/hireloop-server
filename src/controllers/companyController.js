@@ -4,6 +4,7 @@ const { getCollections } = require('../lib/dbUtils');
 // ✅ Get companies for PUBLIC homepage - ALL companies (no status filter)
 exports.getPublicCompanies = async (req, res) => {
     try {
+        console.log('📊 [getPublicCompanies] Called');
         const { companiesCollection } = getCollections();
         
         const page = parseInt(req.query.page) || 1;
@@ -58,6 +59,7 @@ exports.getPublicCompanies = async (req, res) => {
 // ✅ Get all companies (Admin only - with pagination and filters)
 exports.getAllCompanies = async (req, res) => {
     try {
+        console.log('📊 [getAllCompanies] Called');
         const { companiesCollection } = getCollections();
         
         const page = parseInt(req.query.page) || 1;
@@ -114,6 +116,7 @@ exports.getAllCompanies = async (req, res) => {
 // ✅ Get company by ID
 exports.getCompanyById = async (req, res) => {
     try {
+        console.log('📊 [getCompanyById] Called for ID:', req.params.id);
         const { companiesCollection } = getCollections();
         const id = req.params.id;
         
@@ -149,7 +152,10 @@ exports.getCompanyById = async (req, res) => {
 // ✅ Update company status (Admin only)
 exports.updateCompanyStatus = async (req, res) => {
     try {
-        const { companiesCollection, adminLogsCollection } = getCollections(); // Added adminLogsCollection
+        console.log('📊 [updateCompanyStatus] Called for ID:', req.params.id);
+        console.log('📊 Action:', req.body.action);
+        
+        const { companiesCollection, adminLogsCollection } = getCollections();
         const { id } = req.params;
         const { action } = req.body;
 
@@ -239,6 +245,7 @@ exports.updateCompanyStatus = async (req, res) => {
 // ✅ Get my company (for recruiters)
 exports.getMyCompany = async (req, res) => {
     try {
+        console.log('📊 [getMyCompany] Called for user:', req.user?.id);
         const { companiesCollection } = getCollections();
         const userId = req.user?.id || req.query?.recruiterId;
         
@@ -250,6 +257,8 @@ exports.getMyCompany = async (req, res) => {
         }
         
         const result = await companiesCollection.findOne({ recruiterId: userId });
+        console.log('📊 [getMyCompany] Found:', result ? 'Yes' : 'No');
+        
         res.json({
             success: true,
             data: result || null
@@ -266,8 +275,21 @@ exports.getMyCompany = async (req, res) => {
 // ✅ Create company
 exports.createCompany = async (req, res) => {
     try {
-        const { companiesCollection, adminLogsCollection } = getCollections(); // Added adminLogsCollection
+        console.log('📥 [createCompany] Called');
+        console.log('📥 User:', req.user?.id, req.user?.email);
+        console.log('📥 Body:', req.body);
+        
+        const { companiesCollection, adminLogsCollection } = getCollections();
         const company = req.body;
+        
+        // ✅ Validate required fields
+        if (!company.name || !company.websiteUrl || !company.location) {
+            console.log('❌ Missing required fields');
+            return res.status(400).json({
+                success: false,
+                error: 'Name, website URL, and location are required'
+            });
+        }
         
         const newCompany = {
             ...company,
@@ -278,7 +300,9 @@ exports.createCompany = async (req, res) => {
             status: 'pending'
         };
         
+        console.log('📥 Inserting company:', newCompany.name);
         const result = await companiesCollection.insertOne(newCompany);
+        console.log('✅ Company created with ID:', result.insertedId);
 
         // ✅ Log the Action
         const adminEmail = req.user?.email || 'Unknown Admin';
@@ -289,16 +313,17 @@ exports.createCompany = async (req, res) => {
             createdAt: new Date()
         });
 
-        res.json({
+        res.status(201).json({
             success: true,
             message: 'Company created successfully',
+            insertedId: result.insertedId,
             data: {
                 id: result.insertedId,
                 ...newCompany
             }
         });
     } catch (error) {
-        console.error('❌ Error creating company:', error);
+        console.error('❌ [createCompany] Error:', error);
         res.status(500).json({ 
             success: false,
             error: 'Failed to create company' 
@@ -309,6 +334,11 @@ exports.createCompany = async (req, res) => {
 // ✅ Update company
 exports.updateCompany = async (req, res) => {
     try {
+        console.log('📥 [updateCompany] Called');
+        console.log('📥 ID:', req.params.id);
+        console.log('📥 User:', req.user?.id);
+        console.log('📥 Body:', req.body);
+        
         const { companiesCollection } = getCollections();
         const id = req.params.id;
         const updates = req.body;
@@ -328,6 +358,7 @@ exports.updateCompany = async (req, res) => {
             });
         }
         
+        // ✅ Check if user owns this company or is admin
         if (company.recruiterId !== req.user.id && req.user.role !== 'admin') {
             return res.status(403).json({ 
                 success: false,
@@ -335,17 +366,25 @@ exports.updateCompany = async (req, res) => {
             });
         }
         
+        // ✅ Remove protected fields
+        delete updates._id;
+        delete updates.recruiterId;
+        delete updates.recruiterEmail;
+        delete updates.createdAt;
+        
         const result = await companiesCollection.updateOne(
             { _id: new ObjectId(id) },
             { $set: { ...updates, updatedAt: new Date() } }
         );
+        
+        console.log('✅ Company updated:', id);
         
         res.json({
             success: true,
             message: 'Company updated successfully'
         });
     } catch (error) {
-        console.error('❌ Error updating company:', error);
+        console.error('❌ [updateCompany] Error:', error);
         res.status(500).json({ 
             success: false,
             error: 'Failed to update company' 
@@ -356,7 +395,8 @@ exports.updateCompany = async (req, res) => {
 // ✅ Delete company (Admin only)
 exports.deleteCompany = async (req, res) => {
     try {
-        const { companiesCollection, adminLogsCollection } = getCollections(); // Added adminLogsCollection
+        console.log('📥 [deleteCompany] Called for ID:', req.params.id);
+        const { companiesCollection, adminLogsCollection } = getCollections();
         const { id } = req.params;
 
         if (!ObjectId.isValid(id)) {
@@ -385,6 +425,8 @@ exports.deleteCompany = async (req, res) => {
             createdAt: new Date()
         });
 
+        console.log('✅ Company deleted:', id);
+
         res.json({
             success: true,
             message: 'Company deleted successfully'
@@ -394,6 +436,35 @@ exports.deleteCompany = async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Failed to delete company'
+        });
+    }
+};
+
+// ✅ Get company stats (Admin only)
+exports.getCompanyStats = async (req, res) => {
+    try {
+        console.log('📊 [getCompanyStats] Called');
+        const { companiesCollection } = getCollections();
+        
+        const total = await companiesCollection.countDocuments();
+        const pending = await companiesCollection.countDocuments({ status: 'pending' });
+        const approved = await companiesCollection.countDocuments({ status: 'approved' });
+        const rejected = await companiesCollection.countDocuments({ status: 'rejected' });
+
+        res.json({
+            success: true,
+            data: {
+                total,
+                pending,
+                approved,
+                rejected
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error fetching company stats:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch company stats'
         });
     }
 };
