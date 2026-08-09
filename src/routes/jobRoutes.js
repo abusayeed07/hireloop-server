@@ -1,4 +1,3 @@
-// backend/src/routes/jobRoutes.js
 const express = require('express');
 const router = express.Router();
 const jobController = require('../controllers/jobController');
@@ -36,6 +35,9 @@ router.post('/:id/re-review', requireAuth, jobController.requestReReview);
 
 // Get ALL jobs for Admin dashboard (with optional filters)
 router.get('/admin/jobs', requireAuth, requireRole(['admin']), jobController.getAdminJobs);
+
+// ✅ NEW: Get a SINGLE job by ID for Admin details page
+router.get('/admin/jobs/:id', requireAuth, requireRole(['admin']), jobController.getAdminJobById);
 
 // Get Admin Stats for dashboard
 router.get('/admin/stats', requireAuth, requireRole(['admin']), jobController.getAdminStats);

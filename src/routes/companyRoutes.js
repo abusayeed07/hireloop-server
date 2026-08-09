@@ -1,4 +1,3 @@
-// backend/src/routes/companyRoutes.js
 const express = require('express');
 const router = express.Router();
 const companyController = require('../controllers/companyController');
@@ -26,18 +25,47 @@ router.post('/', requireAuth, requireActive, companyController.createCompany);
 router.put('/:id', requireAuth, requireActive, companyController.updateCompany);
 
 // ✅ =============================================
+// ✅ REQUEST RE-REVIEW (Protected - Recruiter only)
+// ✅ =============================================
+router.post('/:id/request-re-review', requireAuth, requireActive, companyController.requestReReview);
+
+// ✅ =============================================
 // ✅ ADMIN ROUTES
 // ✅ =============================================
 const adminMiddleware = [requireAuth, requireActive, requireRole(['admin'])];
 
+// Get all companies
 router.get('/admin/companies', adminMiddleware, companyController.getAllCompanies);
+
+// ✅ Get single company by ID (Admin only)
+router.get('/admin/companies/:id', adminMiddleware, companyController.getAdminCompanyById);
+
+// Get company stats
 router.get('/admin/stats', adminMiddleware, companyController.getCompanyStats);
+
+// Update company status
 router.patch('/admin/companies/:id', adminMiddleware, companyController.updateCompanyStatus);
+
+// Delete company
 router.delete('/admin/companies/:id', adminMiddleware, companyController.deleteCompany);
 
+// ✅ Send message to company
+router.post('/admin/companies/:id/message', adminMiddleware, companyController.sendMessageToCompany);
+
+// ✅ Mark message as read
+router.patch('/admin/companies/:id/mark-read', adminMiddleware, companyController.markMessageAsRead);
+
+// ✅ Get all messages
+router.get('/admin/messages', adminMiddleware, companyController.getAllMessages);
+
 // ✅ =============================================
-// ✅ PUBLIC ROUTES - Show ALL companies (no filter)
+// ✅ PUBLIC ROUTES
 // ✅ =============================================
+
+// ✅ NEW: Public Stats Route (No auth required)
+router.get('/stats/public', companyController.getPublicCompanyStats);
+
+// Show ALL approved companies (no filter)
 router.get('/', companyController.getPublicCompanies);
 
 // ⚠️ CRITICAL: The /:id route MUST come AFTER all specific routes

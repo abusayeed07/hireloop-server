@@ -165,7 +165,7 @@ exports.createJob = async (req, res) => {
     }
 };
 
-// ✅ Update job
+// ✅ ✅ FIXED: Update job (Auto-Triggers Re-Review if Rejected)
 exports.updateJob = async (req, res) => {
     try {
         const { jobsCollection } = getCollections();
@@ -185,18 +185,31 @@ exports.updateJob = async (req, res) => {
             return res.status(403).json({ error: 'You can only update your own jobs' });
         }
 
+        // Prepare update data
         const updateData = { ...req.body, updatedAt: new Date() };
         delete updateData._id;
         delete updateData.createdAt;
         delete updateData.recruiterId;
         delete updateData.companyId;
 
+        // ✅ CRITICAL FIX: If the recruiter updates a rejected job, reset it to Pending for Admin Re-Review
+        if (job.adminApproval === 'rejected' || job.status === 'rejected') {
+            updateData.adminApproval = 'pending';
+            updateData.status = 'pending';
+            updateData.adminRejectionReason = ''; // Clear the rejection reason for the recruiter
+            console.log('🔄 Job updated by recruiter. Resetting to pending for admin re-review.');
+        }
+
         const result = await jobsCollection.updateOne(
             { _id: new ObjectId(jobId) },
             { $set: updateData }
         );
 
-        res.json({ success: true, message: 'Job updated successfully', result });
+        res.json({ 
+            success: true, 
+            message: 'Job updated successfully. ' + (job.adminApproval === 'rejected' ? 'Sent for re-review!' : ''),
+            result 
+        });
     } catch (error) {
         console.error('Error updating job:', error);
         res.status(500).json({ error: 'Failed to update job' });
@@ -323,6 +336,47 @@ exports.toggleJobStatus = async (req, res) => {
 // ✅ ADMIN CONTROLLERS
 // ✅ ==========================================
 
+// ✅ ✅ NEW: Admin Get Job by ID (For the Admin Details Page)
+exports.getAdminJobById = async (req, res) => {
+    try {
+        console.log('📊 [getAdminJobById] Called');
+        console.log('📝 Job ID:', req.params.id);
+        console.log('👤 Admin:', req.user?.email);
+
+        const { jobsCollection } = getCollections();
+        const jobId = req.params.id;
+
+        if (!ObjectId.isValid(jobId)) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Invalid job ID' 
+            });
+        }
+
+        const job = await jobsCollection.findOne({ _id: new ObjectId(jobId) });
+
+        if (!job) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Job not found' 
+            });
+        }
+
+        console.log('✅ Job found:', job.jobTitle);
+        res.json({
+            success: true,
+            data: job
+        });
+
+    } catch (error) {
+        console.error('❌ [getAdminJobById] Error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to fetch job' 
+        });
+    }
+};
+
 // ✅ Admin approve job
 exports.adminApproveJob = async (req, res) => {
     try {
@@ -419,7 +473,7 @@ exports.adminRejectJob = async (req, res) => {
             { 
                 $set: { 
                     adminApproval: 'rejected',
-                    status: 'rejected',
+                    status: 'pending', // ✅ FIXED: Set to 'pending' so it can be re-reviewed easily
                     rejectedAt: new Date(),
                     updatedAt: new Date(),
                     adminRejectionReason: reason || 'No reason provided'
