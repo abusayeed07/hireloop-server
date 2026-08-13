@@ -85,6 +85,14 @@ router.get(
     applicationController.getRecruiterStats
 );
 
+// ✅ Get single application by ID (Recruiter) - ADD THIS ROUTE
+router.get(
+    '/recruiter/:id',
+    requireAuth,
+    requireActive,
+    applicationController.getApplicationByIdRecruiter
+);
+
 // ✅ =============================================
 // ✅ UPDATE APPLICATION STATUS (Recruiter)
 // ✅ =============================================

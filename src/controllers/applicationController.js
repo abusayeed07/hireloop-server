@@ -77,7 +77,7 @@ exports.getMyApplications = async (req, res) => {
     }
 };
 
-// ✅ Get all applications for a recruiter's company
+// ✅ Get all applications for a recruiter's company (FIXED 404 to 200)
 exports.getRecruiterApplications = async (req, res) => {
     try {
         console.log('📊 [getRecruiterApplications] Called for user:', req.user?.id);
@@ -87,10 +87,12 @@ exports.getRecruiterApplications = async (req, res) => {
         // ✅ Find recruiter's company
         const company = await companiesCollection.findOne({ recruiterId: userId });
         if (!company) {
-            console.log('❌ No company found for recruiter:', userId);
-            return res.status(404).json({
-                success: false,
-                error: 'No company found for this recruiter'
+            console.log('ℹ️ No company found for recruiter:', userId);
+            // ✅ FIX: Return 200 with empty array instead of 404
+            return res.status(200).json({
+                success: true,
+                data: [],
+                message: 'No company found for this recruiter'
             });
         }
 
@@ -126,7 +128,7 @@ exports.getRecruiterApplications = async (req, res) => {
     }
 };
 
-// ✅ Get application statistics for recruiter
+// ✅ Get application statistics for recruiter (FIXED 404 to 200)
 exports.getRecruiterStats = async (req, res) => {
     try {
         console.log('📊 [getRecruiterStats] Called for user:', req.user?.id);
@@ -136,9 +138,20 @@ exports.getRecruiterStats = async (req, res) => {
         // ✅ Find recruiter's company
         const company = await companiesCollection.findOne({ recruiterId: userId });
         if (!company) {
-            return res.status(404).json({
-                success: false,
-                error: 'No company found for this recruiter'
+            console.log('ℹ️ No company found for recruiter:', userId);
+            // ✅ FIX: Return 200 with default stats instead of 404
+            return res.status(200).json({
+                success: true,
+                data: {
+                    total: 0,
+                    pending: 0,
+                    reviewed: 0,
+                    shortlisted: 0,
+                    interviewed: 0,
+                    rejected: 0,
+                    hired: 0
+                },
+                message: 'No company found for this recruiter'
             });
         }
 
@@ -614,5 +627,143 @@ exports.createApplication = async (req, res) => {
     } catch (error) {
         console.error('Error creating application:', error);
         res.status(500).json({ error: 'Failed to submit application' });
+    }
+};
+
+// ✅ =============================================
+// ✅ GET SINGLE APPLICATION BY ID (RECRUITER) - UPDATED WITH ALL FIELDS
+// ✅ =============================================
+exports.getApplicationByIdRecruiter = async (req, res) => {
+    try {
+        console.log('👤 [getApplicationByIdRecruiter] Called!');
+        console.log('📝 Application ID:', req.params.id);
+        console.log('👤 User ID:', req.user?.id);
+        
+        const { applicationsCollection, jobsCollection, companiesCollection, usersCollection } = getCollections();
+        const { id } = req.params;
+        const userId = req.user.id;
+        const userRole = req.user.role;
+        
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid application ID'
+            });
+        }
+        
+        // ✅ Find the application
+        const application = await applicationsCollection.findOne({ _id: new ObjectId(id) });
+        if (!application) {
+            return res.status(404).json({
+                success: false,
+                error: 'Application not found'
+            });
+        }
+        
+        console.log('📝 Application found:', application.jobTitle);
+        console.log('📝 Job ID:', application.jobId);
+        console.log('📝 Applicant ID:', application.applicantId);
+        
+        // ✅ Find the job
+        const job = await jobsCollection.findOne({ _id: new ObjectId(application.jobId) });
+        if (!job) {
+            return res.status(404).json({
+                success: false,
+                error: 'Job not found'
+            });
+        }
+        console.log('📝 Job found:', job.jobTitle);
+        console.log('📝 Company ID:', job.companyId);
+        
+        // ✅ Check if the recruiter owns this company (or is admin)
+        const company = await companiesCollection.findOne({ _id: new ObjectId(job.companyId) });
+        let isOwner = false;
+        let isAdmin = userRole === 'admin';
+        
+        if (company && company.recruiterId) {
+            isOwner = company.recruiterId === userId || company.recruiterId.toString() === userId.toString();
+        }
+        
+        console.log('📝 Is owner?', isOwner);
+        console.log('📝 Is admin?', isAdmin);
+        
+        // ✅ Allow admin to bypass ownership check
+        if (!isOwner && !isAdmin) {
+            console.log('❌ Access denied - User does not own this company');
+            return res.status(403).json({
+                success: false,
+                error: 'You can only view applications for jobs from your company'
+            });
+        }
+        
+        // ✅ Find applicant details
+        const applicant = await usersCollection.findOne({ _id: new ObjectId(application.applicantId) });
+        
+        // ✅ Format the response with ALL fields from the application form
+        const formattedApplication = {
+            _id: application._id,
+            
+            // Personal Information
+            applicantName: applicant?.name || application.applicantName || 'Unknown',
+            applicantEmail: applicant?.email || application.applicantEmail || 'Unknown',
+            phone: applicant?.phone || application.phone || '',
+            location: applicant?.location || application.location || '',
+            
+            // Professional Information
+            currentCompany: application.currentCompany || '',
+            currentRole: application.currentRole || '',
+            yearsOfExperience: application.yearsOfExperience || '',
+            highestEducation: application.highestEducation || '',
+            
+            // Skills
+            skills: application.skills || [],
+            
+            // Links & Social Profiles
+            linkedin: applicant?.linkedin || application.linkedin || '',
+            portfolio: applicant?.portfolio || application.portfolio || '',
+            website: application.website || '',
+            
+            // Job Information
+            jobTitle: job.jobTitle || 'Unknown Job',
+            companyName: company?.name || 'Unknown Company',
+            experienceLevel: job.experienceLevel || 'N/A',
+            employmentType: job.employmentType || 'N/A',
+            
+            // Application Details
+            status: application.status || 'pending',
+            coverLetter: application.coverLetter || '',
+            additionalInfo: application.additionalInfo || '',
+            recruiterNotes: application.recruiterNotes || '',
+            appliedAt: application.createdAt || application.appliedAt,
+            
+            // Timeline fields
+            reviewedAt: application.reviewedAt || null,
+            shortlistedAt: application.shortlistedAt || null,
+            interviewAt: application.interviewAt || null,
+            hiredAt: application.hiredAt || null,
+            rejectedAt: application.rejectedAt || null,
+            
+            // IDs
+            jobId: job._id,
+            companyId: company?._id || null,
+            userId: applicant?._id || application.applicantId,
+            
+            // Include any other fields that might exist
+            ...application
+        };
+        
+        console.log('✅ Formatted application ready with all fields');
+        
+        res.json({
+            success: true,
+            data: formattedApplication
+        });
+        
+    } catch (error) {
+        console.error('❌ [getApplicationByIdRecruiter] Error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch application details'
+        });
     }
 };
